@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>عجلة الفرصة - nova Bot</title>
+    <title>عجلة الفرصة - nova</title>
     
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
@@ -141,7 +141,6 @@
 </head>
 <body>
 
-    <!-- مشغل الصوت -->
     <audio id="spinAudio" src="wheel_sound.mp3" preload="auto"></audio>
 
     <div class="header-container">
@@ -158,8 +157,8 @@
     </div>
 
     <div class="footer-card">
-        <div class="spins-left">الحالة: <span id="statusText">جاهز للتدوير</span></div>
-        <div class="condition-text">🎁 اربح مبالغ نقدية، بونص مئوي، أو لفات إضافية!</div>
+        <div class="spins-left">اللفات المتاحة: <span id="spinsCountText">جاري التحميل...</span></div>
+        <div class="condition-text" id="conditionDesc">🎁 اربح مبالغ نقدية، بونص مئوي، أو لفات إضافية!</div>
     </div>
 
     <script>
@@ -171,7 +170,6 @@
         let preDeterminedPrize = null;
         if (urlParams.has('prize')) {
             try {
-                // إرجاع كلمة "بالمئة" إلى الرمز الأساسي "%" إذا وجدت في الجائزة المحددة
                 preDeterminedPrize = decodeURIComponent(urlParams.get('prize').replace(/\+/g, ' ')).trim().replace(/بالمئة/g, "%");
             } catch(e) {
                 preDeterminedPrize = urlParams.get('prize');
@@ -179,9 +177,12 @@
         }
 
         const userId = urlParams.get('uid') || "0";
-        const audio = document.getElementById("spinAudio");
+        const spinsLeftParam = urlParams.get('spins') || "1";
+        
+        // عرض عدد اللفات المتاحة في البطاقة السفلية
+        document.getElementById("spinsCountText").innerText = spinsLeftParam;
 
-        // مصفوفة فارغة لضمان استقبال الجوائز المحدثة من لوحة الأدمن بدقة
+        const audio = document.getElementById("spinAudio");
         let sectors = [];
 
         if (urlParams.has('prizes')) {
@@ -193,7 +194,6 @@
                     
                     if (decodedPrizes && decodedPrizes.length > 0) {
                         sectors = decodedPrizes.map((p, i) => {
-                            // إعادة تحويل كلمة "بالمئة" إلى رمز النسبة المئوية "%" الحقيقي
                             let cleanText = p.trim().replace(/بالمئة/g, "%");
                             let tColor = "#fff";
                             
@@ -214,7 +214,6 @@
             }
         }
 
-        // قيم احتياطية في حال لم يتم إرسال الرابط بشكل صحيح
         if (!sectors || sectors.length === 0) {
             sectors = [
                 { text: "1000", color: "#166946", textColor: "#fff" },
@@ -297,14 +296,44 @@
                     ease: "power3.out",
                     onComplete: () => {
                         isSpinning = false;
-                        
-                        try {
-                            tg.showAlert(`🎉 مبروك! لقد فزت بـ: (${winningPrize})`);
-                        } catch(e) {}
 
+                        // 1. حالة حظ أوفر (عرض رسالة مع زر Close فقط مع البقاء داخل العجلة)
+                        if (winningPrize.includes("حظ") || winningPrize.includes("أوفر") || winningPrize.includes("خاسر")) {
+                            try {
+                                tg.showAlert(`❌ عذراً، حظ أوفر في المرات القادمة!`, () => {
+                                    spinBtn.classList.remove("disabled");
+                                });
+                            } catch(e) {
+                                alert("❌ عذراً، حظ أوفر في المرات القادمة!");
+                                spinBtn.classList.remove("disabled");
+                            }
+                            return;
+                        }
+
+                        // 2. حالة إعادة تدوير / لفة إضافية (تغلق وحدها ويتم تفعيل اللفة فوراً داخل العجلة)
+                        if (winningPrize.includes("إعادة") || winningPrize.includes("تدوير")) {
+                            try {
+                                tg.sendData(userId + "|" + winningPrize);
+                                tg.showAlert(`🔄 مبروك! لقد ربحت لفة إضافية مجانية!`, () => {
+                                    spinBtn.classList.remove("disabled");
+                                });
+                            } catch(e) {
+                                alert("🔄 مبروك! لقد ربحت لفة إضافية مجانية!");
+                                spinBtn.classList.remove("disabled");
+                            }
+                            return;
+                        }
+
+                        // 3. بقية الجوائز (مبالغ نقدية أو بونص مئوي) -> الانتقال للبوت لاستلامها
+                        let winMessage = `🎉 مبروك! لقد فزت بـ: (${winningPrize})\n\nاضغط Close ثم انتقل للبوت لاستلام جائزتك فوراً.`;
                         try {
-                            tg.sendData(userId + "|" + winningPrize);
-                        } catch(e) {}
+                            tg.showAlert(winMessage, () => {
+                                window.location.href = `https://t.me/YOUR_BOT_USERNAME?start=wheel_${userId}_${encodeURIComponent(winningPrize)}`;
+                            });
+                        } catch(e) {
+                            alert(winMessage);
+                            window.location.href = `https://t.me/YOUR_BOT_USERNAME?start=wheel_${userId}_${encodeURIComponent(winningPrize)}`;
+                        }
                     }
                 });
             }
